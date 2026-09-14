@@ -53,7 +53,8 @@ GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "")
 OPENING_ODDS_FILE = "opening_odds.json"
 
-REQUEST_TIMEOUT = 15
+REQUEST_TIMEOUT = 30
+PROXY_TIMEOUT = 45  # the proxy adds a fetch-then-relay hop on top of an already large payload
 
 
 # ---------------------------------------------------------------------------
@@ -76,10 +77,15 @@ def get_json(url, params=None, retries=2):
         "Origin": "https://www.espn.com",
     }
 
-    def _try(request_url):
+    def _try(request_url, timeout=REQUEST_TIMEOUT):
         req = urllib.request.Request(request_url, headers=browser_headers)
-        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
+
+    def _try_proxy():
+        from urllib.parse import quote
+        proxy_url = f"https://api.allorigins.win/raw?url={quote(url, safe='')}"
+        return _try(proxy_url, timeout=PROXY_TIMEOUT)
 
     last_err = None
     for attempt in range(retries + 1):
@@ -87,19 +93,15 @@ def get_json(url, params=None, retries=2):
             return _try(url)
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as e:
             last_err = e
-            # A 403 specifically means ESPN's bot protection is blocking the
-            # requester's IP outright — better headers won't fix that, since
-            # GitHub Actions runners sit on cloud IP ranges that are commonly
-            # blocklisted. Route through a public proxy (a different IP) as
-            # a fallback rather than burning retries on the same blocked path.
-            is_403 = isinstance(e, urllib.error.HTTPError) and e.code == 403
-            if is_403:
-                from urllib.parse import quote
-                proxy_url = f"https://api.allorigins.win/raw?url={quote(url, safe='')}"
-                try:
-                    return _try(proxy_url)
-                except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as proxy_err:
-                    last_err = proxy_err
+            # Direct requests from GitHub Actions' cloud IPs can be blocked
+            # outright (403) or just time out under ESPN's bot protection —
+            # either way, better headers alone won't fix it. Fall back to a
+            # public proxy (a different origin IP) rather than retrying the
+            # same blocked/slow path.
+            try:
+                return _try_proxy()
+            except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as proxy_err:
+                last_err = proxy_err
             time.sleep(1.5 * (attempt + 1))
     print(f"WARNING: request failed after retries: {url} ({last_err})")
     return None
