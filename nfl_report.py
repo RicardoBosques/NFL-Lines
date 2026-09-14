@@ -64,26 +64,42 @@ def get_json(url, params=None, retries=2):
     if params:
         from urllib.parse import urlencode
         url = f"{url}?{urlencode(params)}"
+
+    browser_headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.espn.com/",
+        "Origin": "https://www.espn.com",
+    }
+
+    def _try(request_url):
+        req = urllib.request.Request(request_url, headers=browser_headers)
+        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
     last_err = None
     for attempt in range(retries + 1):
         try:
-            req = urllib.request.Request(url, headers={
-                # ESPN's site API sits behind bot protection that 403s requests
-                # that don't look like a browser — a custom User-Agent (or none)
-                # gets blocked outright from datacenter IPs like GitHub Actions'.
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                    "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
-                ),
-                "Accept": "application/json, text/plain, */*",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Referer": "https://www.espn.com/",
-                "Origin": "https://www.espn.com",
-            })
-            with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
-                return json.loads(resp.read().decode("utf-8"))
+            return _try(url)
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as e:
             last_err = e
+            # A 403 specifically means ESPN's bot protection is blocking the
+            # requester's IP outright — better headers won't fix that, since
+            # GitHub Actions runners sit on cloud IP ranges that are commonly
+            # blocklisted. Route through a public proxy (a different IP) as
+            # a fallback rather than burning retries on the same blocked path.
+            is_403 = isinstance(e, urllib.error.HTTPError) and e.code == 403
+            if is_403:
+                from urllib.parse import quote
+                proxy_url = f"https://api.allorigins.win/raw?url={quote(url, safe='')}"
+                try:
+                    return _try(proxy_url)
+                except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as proxy_err:
+                    last_err = proxy_err
             time.sleep(1.5 * (attempt + 1))
     print(f"WARNING: request failed after retries: {url} ({last_err})")
     return None
