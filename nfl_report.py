@@ -1,21 +1,22 @@
 """
 nfl_report.py
 
-Weekly NFL matchup + odds report. Same overall pattern as the MLB pitcher/odds
-script: free/keyless stats API + The Odds API for lines, self-tracked
-"opening" odds (committed back to the repo by the workflow), full report by
-email, short "ready" ping via ntfy.sh.
+Weekly NFL matchup + odds report.
 
 Data sources
 ------------
-- ESPN's public (undocumented) API — site.api.espn.com/apis/site/v2/sports/football/nfl
-  Free, no key, no published rate limit, but unofficial: ESPN can change or
-  break it without notice. Used for: week's scoreboard/schedule, team
-  records (overall + home/away + last 5), and team-level offense/defense
-  ranks. There is no clean "probable starter" concept in football the way
-  MLB has starting pitchers, so this starts at the team-stat level (points
-  for/against per game, yards per game, turnover margin) rather than
-  QB-level detail — same "add stats in stages" approach used for MLB.
+- nflverse's GitHub-hosted data releases (nflverse/nflverse-data), specifically:
+    * schedules/games.csv        -> weekly matchups, scores, win-loss records
+    * stats_team/stats_team_week_<season>.csv -> per-team per-week offensive/
+      defensive box-score stats, used here for yards/game and turnover margin
+  These are plain file downloads from github.com/releases, not a live scraped
+  API, so they don't carry the bot-protection risk ESPN's undocumented site
+  API does. (An earlier version of this script used ESPN's scoreboard API
+  directly; it kept getting blocked or timing out from GitHub Actions' cloud
+  IPs, so this version switches to nflverse's GitHub-hosted CSVs instead.)
+  There's no "probable starter" equivalent in football the way MLB has
+  starting pitchers, so this starts at the team-stat level (points, yards,
+  turnover margin, record/splits) rather than QB-level detail.
 - The Odds API — api.the-odds-api.com, sport key `americanfootball_nfl`.
   Same free tier (500 requests/month) and same opening-odds self-tracking
   pattern as the MLB version, since the free tier has no historical odds.
@@ -24,13 +25,14 @@ Secrets expected (GitHub repo Settings -> Secrets and variables -> Actions):
   ODDS_API_KEY
   GMAIL_ADDRESS
   GMAIL_APP_PASSWORD
-  NTFY_TOPIC        (kept as a secret rather than hardcoded, unlike the MLB
-                      version, so the topic name isn't sitting in the repo)
+  NTFY_TOPIC
 
 Files this script reads/writes:
   opening_odds.json  — auto-committed by the workflow each run, same as MLB
 """
 
+import csv
+import io
 import json
 import os
 import smtplib
@@ -38,14 +40,18 @@ import ssl
 import time
 import urllib.request
 import urllib.error
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from email.mime.text import MIMEText
 
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
 
-ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/football/nfl"
+GAMES_CSV_URL = "https://github.com/nflverse/nflverse-data/releases/download/schedules/games.csv"
+TEAM_STATS_CSV_URL_TMPL = (
+    "https://github.com/nflverse/nflverse-data/releases/download/stats_team/stats_team_week_{season}.csv"
+)
+
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")
 ODDS_API_BASE = "https://api.the-odds-api.com/v4/sports/americanfootball_nfl"
 GMAIL_ADDRESS = os.environ.get("GMAIL_ADDRESS", "")
@@ -54,173 +60,165 @@ NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "")
 OPENING_ODDS_FILE = "opening_odds.json"
 
 REQUEST_TIMEOUT = 30
-PROXY_TIMEOUT = 45  # the proxy adds a fetch-then-relay hop on top of an already large payload
 
 
 # ---------------------------------------------------------------------------
-# HTTP helper
+# HTTP helpers
 # ---------------------------------------------------------------------------
 
-def get_json(url, params=None, retries=2):
-    if params:
-        from urllib.parse import urlencode
-        url = f"{url}?{urlencode(params)}"
-
-    browser_headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
-        ),
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Referer": "https://www.espn.com/",
-        "Origin": "https://www.espn.com",
-    }
-
-    def _try(request_url, timeout=REQUEST_TIMEOUT):
-        req = urllib.request.Request(request_url, headers=browser_headers)
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-
-    def _try_proxy():
-        from urllib.parse import quote
-        proxy_url = f"https://api.allorigins.win/raw?url={quote(url, safe='')}"
-        return _try(proxy_url, timeout=PROXY_TIMEOUT)
-
+def fetch_text(url, retries=2):
     last_err = None
     for attempt in range(retries + 1):
         try:
-            return _try(url)
+            req = urllib.request.Request(url, headers={"User-Agent": "nfl-report-script/1.0"})
+            with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
+                return resp.read().decode("utf-8")
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as e:
             last_err = e
-            # Direct requests from GitHub Actions' cloud IPs can be blocked
-            # outright (403) or just time out under ESPN's bot protection —
-            # either way, better headers alone won't fix it. Fall back to a
-            # public proxy (a different origin IP) rather than retrying the
-            # same blocked/slow path.
-            try:
-                return _try_proxy()
-            except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as proxy_err:
-                last_err = proxy_err
+            time.sleep(1.5 * (attempt + 1))
+    print(f"WARNING: request failed after retries: {url} ({last_err})")
+    return None
+
+
+def fetch_csv(url):
+    """Downloads a CSV file and returns a list of dict rows, or [] on failure."""
+    text = fetch_text(url)
+    if text is None:
+        return []
+    return list(csv.DictReader(io.StringIO(text)))
+
+
+def fetch_json(url, params=None, retries=2):
+    if params:
+        from urllib.parse import urlencode
+        url = f"{url}?{urlencode(params)}"
+    last_err = None
+    for attempt in range(retries + 1):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "nfl-report-script/1.0"})
+            with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as e:
+            last_err = e
             time.sleep(1.5 * (attempt + 1))
     print(f"WARNING: request failed after retries: {url} ({last_err})")
     return None
 
 
 # ---------------------------------------------------------------------------
-# ESPN: schedule / scoreboard for the current week
+# Schedule / season-week detection / team records
 # ---------------------------------------------------------------------------
 
-def get_week_scoreboard():
-    """Returns the raw ESPN scoreboard payload for the current NFL week."""
-    data = get_json(f"{ESPN_BASE}/scoreboard")
-    return data
-
-
-def parse_games(scoreboard):
-    """Pulls out the list of this week's games with team names/ids/records."""
-    games = []
-    if not scoreboard:
-        return games
-    for event in scoreboard.get("events", []):
-        try:
-            comp = event["competitions"][0]
-            competitors = comp["competitors"]
-            home = next(c for c in competitors if c["homeAway"] == "home")
-            away = next(c for c in competitors if c["homeAway"] == "away")
-            games.append({
-                "id": event["id"],
-                "name": event.get("shortName", event.get("name", "")),
-                "date": event.get("date", ""),
-                "home_team": home["team"]["displayName"],
-                "home_abbr": home["team"]["abbreviation"],
-                "home_id": home["team"]["id"],
-                "home_record": home.get("records", [{}])[0].get("summary", "N/A") if home.get("records") else "N/A",
-                "away_team": away["team"]["displayName"],
-                "away_abbr": away["team"]["abbreviation"],
-                "away_id": away["team"]["id"],
-                "away_record": away.get("records", [{}])[0].get("summary", "N/A") if away.get("records") else "N/A",
-                "venue": comp.get("venue", {}).get("fullName", ""),
-                "status": event.get("status", {}).get("type", {}).get("shortDetail", ""),
-            })
-        except (KeyError, StopIteration, IndexError):
-            continue
-    return games
-
-
-# ---------------------------------------------------------------------------
-# ESPN: team-level stats (points/yards per game, turnover margin, splits)
-# ---------------------------------------------------------------------------
-
-_team_stats_cache = {}
-
-
-def get_team_stats(team_id):
+def determine_current_season_and_week(games, today=None):
     """
-    Pulls team season stats. Cached per run since a team shows up once as
-    home and once as away lookups aren't needed twice.
+    Picks the season/week to report on: the earliest REG-season week that
+    still has a game today or in the future. Falls back to the most recent
+    completed week if the season/data has otherwise wrapped up.
     """
-    if team_id in _team_stats_cache:
-        return _team_stats_cache[team_id]
+    today = today or date.today()
+    reg_games = [g for g in games if g.get("game_type") == "REG" and g.get("gameday")]
+    if not reg_games:
+        return None, None
 
-    data = get_json(f"{ESPN_BASE}/teams/{team_id}/statistics")
-    stats = {"pts_for": "N/A", "pts_against": "N/A", "yards_per_game": "N/A", "turnover_margin": "N/A"}
+    seasons = sorted({int(g["season"]) for g in reg_games})
+    season = max(s for s in seasons if s <= today.year) if any(s <= today.year for s in seasons) else seasons[-1]
 
-    if data:
+    season_games = [g for g in reg_games if int(g["season"]) == season]
+    upcoming_weeks = sorted(
+        {int(g["week"]) for g in season_games
+         if datetime.strptime(g["gameday"], "%Y-%m-%d").date() >= today}
+    )
+    if upcoming_weeks:
+        return season, upcoming_weeks[0]
+
+    # Season's fully in the past (e.g. running the script in the off-season
+    # gap) — fall back to the last week that was actually played.
+    played_weeks = sorted({int(g["week"]) for g in season_games})
+    return (season, played_weeks[-1]) if played_weeks else (None, None)
+
+
+def team_record_and_splits(games, season, team, before_week):
+    """
+    Computes overall/home/away win-loss record and points for/against per
+    game from completed games (score fields populated) before `before_week`.
+    """
+    played = [
+        g for g in games
+        if int(g["season"]) == season and g.get("game_type") == "REG"
+        and int(g["week"]) < before_week
+        and g.get("home_score") not in (None, "") and g.get("away_score") not in (None, "")
+        and (g["home_team"] == team or g["away_team"] == team)
+    ]
+
+    def record_str(rows):
+        w = l = t = 0
+        pts_for = pts_against = 0
+        for g in rows:
+            home = g["home_team"] == team
+            own = int(g["home_score"]) if home else int(g["away_score"])
+            opp = int(g["away_score"]) if home else int(g["home_score"])
+            pts_for += own
+            pts_against += opp
+            if own > opp:
+                w += 1
+            elif own < opp:
+                l += 1
+            else:
+                t += 1
+        record = f"{w}-{l}" + (f"-{t}" if t else "")
+        games_played = len(rows)
+        avg_for = round(pts_for / games_played, 1) if games_played else "N/A"
+        avg_against = round(pts_against / games_played, 1) if games_played else "N/A"
+        return record, avg_for, avg_against
+
+    overall_record, pts_for_avg, pts_against_avg = record_str(played)
+    home_record, _, _ = record_str([g for g in played if g["home_team"] == team])
+    away_record, _, _ = record_str([g for g in played if g["away_team"] == team])
+
+    return {
+        "record": overall_record if played else "0-0",
+        "pts_for": pts_for_avg,
+        "pts_against": pts_against_avg,
+        "home_record": home_record if played else "0-0",
+        "away_record": away_record if played else "0-0",
+    }
+
+
+def week_matchups(games, season, week):
+    return [
+        g for g in games
+        if int(g["season"]) == season and g.get("game_type") == "REG" and int(g["week"]) == week
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Team weekly box-score stats -> yards/game, turnover margin
+# ---------------------------------------------------------------------------
+
+def team_yardage_and_turnovers(team_week_stats, season, team, before_week):
+    rows = [
+        r for r in team_week_stats
+        if r.get("team") == team and int(r.get("season", 0)) == season
+        and int(r.get("week", 0)) < before_week
+    ]
+    if not rows:
+        return {"yards_per_game": "N/A", "turnover_margin": "N/A"}
+
+    def to_int(v):
         try:
-            categories = data.get("results", {}).get("stats", {}).get("categories", [])
-            flat = {}
-            for cat in categories:
-                for stat in cat.get("stats", []):
-                    flat[stat.get("name")] = stat.get("displayValue")
-            stats["pts_for"] = flat.get("totalPointsPerGame", "N/A")
-            stats["yards_per_game"] = flat.get("yardsPerGame", "N/A")
-            stats["turnover_margin"] = flat.get("turnOverDifferential", "N/A")
-        except (KeyError, AttributeError):
-            pass
+            return int(float(v))
+        except (ValueError, TypeError):
+            return 0
 
-    _team_stats_cache[team_id] = stats
-    return stats
+    total_yards = sum(to_int(r.get("passing_yards")) + to_int(r.get("rushing_yards")) for r in rows)
+    takeaways = sum(to_int(r.get("def_interceptions")) + to_int(r.get("fumble_recovery_opp")) for r in rows)
+    giveaways = sum(to_int(r.get("passing_interceptions")) + to_int(r.get("fumbles_lost_total")) for r in rows)
 
-
-def get_team_record_splits(team_id):
-    """Home/away and last-5 splits from the team's record endpoint."""
-    data = get_json(f"{ESPN_BASE}/teams/{team_id}")
-    splits = {"home": "N/A", "away": "N/A", "last5": "N/A"}
-    if not data:
-        return splits
-    try:
-        items = data.get("team", {}).get("record", {}).get("items", [])
-        for item in items:
-            desc = item.get("description", item.get("type", ""))
-            summary = item.get("summary", "N/A")
-            if desc.lower() == "home":
-                splits["home"] = summary
-            elif desc.lower() == "road" or desc.lower() == "away":
-                splits["away"] = summary
-    except (KeyError, AttributeError):
-        pass
-    return splits
-
-
-# ---------------------------------------------------------------------------
-# ESPN: injuries (best-effort — coverage/format can vary week to week)
-# ---------------------------------------------------------------------------
-
-def get_team_injuries(team_id):
-    data = get_json(f"{ESPN_BASE}/teams/{team_id}/injuries")
-    injuries = []
-    if not data:
-        return injuries
-    try:
-        for item in data.get("injuries", []):
-            for entry in item.get("injuries", []):
-                athlete = entry.get("athlete", {}).get("displayName", "Unknown")
-                status = entry.get("status", "Unknown")
-                injuries.append(f"{athlete} ({status})")
-    except (KeyError, AttributeError):
-        pass
-    return injuries[:8]  # cap so one banged-up roster doesn't blow out the report
+    games_played = len(rows)
+    return {
+        "yards_per_game": round(total_yards / games_played, 1),
+        "turnover_margin": f"{takeaways - giveaways:+d}",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +229,7 @@ def get_current_odds():
     if not ODDS_API_KEY:
         print("WARNING: ODDS_API_KEY not set, skipping odds.")
         return []
-    data = get_json(
+    data = fetch_json(
         f"{ODDS_API_BASE}/odds",
         params={
             "apiKey": ODDS_API_KEY,
@@ -259,7 +257,6 @@ def save_opening_odds(opening):
 
 
 def extract_line(game_odds, market_key):
-    """Pulls a representative price from the first bookmaker that has it."""
     for bm in game_odds.get("bookmakers", []):
         for market in bm.get("markets", []):
             if market.get("key") == market_key:
@@ -268,11 +265,6 @@ def extract_line(game_odds, market_key):
 
 
 def build_odds_lookup(odds_list, opening):
-    """
-    Returns {espn_matchup_key: {"current": {...}, "opening": {...}}}.
-    Matches by team names since The Odds API and ESPN don't share IDs.
-    Also updates `opening` in place with any newly-seen games.
-    """
     lookup = {}
     for game in odds_list:
         key = f"{game.get('away_team')}@{game.get('home_team')}_{game.get('commence_time', '')[:10]}"
@@ -295,11 +287,29 @@ def format_outcomes(outcomes):
         name = o.get("name", "")
         price = o.get("price", "")
         point = o.get("point")
+        price_str = f"{price:+d}" if isinstance(price, int) else str(price)
         if point is not None:
-            parts.append(f"{name} {point:+g} ({price:+d})" if isinstance(price, int) else f"{name} {point:+g} ({price})")
+            parts.append(f"{name} {point:+g} ({price_str})")
         else:
-            parts.append(f"{name} ({price:+d})" if isinstance(price, int) else f"{name} ({price})")
+            parts.append(f"{name} ({price_str})")
     return " / ".join(parts)
+
+
+# nflverse team abbreviations mostly line up with The Odds API's full team
+# names via a simple lookup — this covers the common relocations/renamings.
+TEAM_FULL_NAMES = {
+    "ARI": "Arizona Cardinals", "ATL": "Atlanta Falcons", "BAL": "Baltimore Ravens",
+    "BUF": "Buffalo Bills", "CAR": "Carolina Panthers", "CHI": "Chicago Bears",
+    "CIN": "Cincinnati Bengals", "CLE": "Cleveland Browns", "DAL": "Dallas Cowboys",
+    "DEN": "Denver Broncos", "DET": "Detroit Lions", "GB": "Green Bay Packers",
+    "HOU": "Houston Texans", "IND": "Indianapolis Colts", "JAX": "Jacksonville Jaguars",
+    "KC": "Kansas City Chiefs", "LV": "Las Vegas Raiders", "LAC": "Los Angeles Chargers",
+    "LA": "Los Angeles Rams", "MIA": "Miami Dolphins", "MIN": "Minnesota Vikings",
+    "NE": "New England Patriots", "NO": "New Orleans Saints", "NYG": "New York Giants",
+    "NYJ": "New York Jets", "PHI": "Philadelphia Eagles", "PIT": "Pittsburgh Steelers",
+    "SF": "San Francisco 49ers", "SEA": "Seattle Seahawks", "TB": "Tampa Bay Buccaneers",
+    "TEN": "Tennessee Titans", "WAS": "Washington Commanders",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -307,49 +317,59 @@ def format_outcomes(outcomes):
 # ---------------------------------------------------------------------------
 
 def build_report():
-    scoreboard = get_week_scoreboard()
-    games = parse_games(scoreboard)
+    games = fetch_csv(GAMES_CSV_URL)
+    if not games:
+        return "Could not load schedule data (nflverse games.csv fetch failed).", "unknown"
+
+    season, week = determine_current_season_and_week(games)
+    if season is None:
+        return "Could not determine the current NFL week from schedule data.", "unknown"
+
+    team_week_stats = fetch_csv(TEAM_STATS_CSV_URL_TMPL.format(season=season))
+    matchups = week_matchups(games, season, week)
+
     odds_list = get_current_odds()
     opening = load_opening_odds()
     odds_lookup = build_odds_lookup(odds_list, opening)
     save_opening_odds(opening)
 
-    week_label = ""
-    if scoreboard:
-        week_label = scoreboard.get("week", {}).get("text", "") or f"Week {scoreboard.get('week', {}).get('number', '?')}"
-
+    week_label = f"{season} Week {week}"
     lines = []
     lines.append(f"NFL WEEKLY REPORT — {week_label}")
     lines.append(f"Generated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
     lines.append("=" * 60)
 
-    if not games:
-        lines.append("\nNo games found for the current week (bye week, or ESPN endpoint changed shape).")
+    if not matchups:
+        lines.append("\nNo games found for the current week (bye week, or schedule data not yet updated).")
 
-    for g in games:
-        home_stats = get_team_stats(g["home_id"])
-        away_stats = get_team_stats(g["away_id"])
-        home_splits = get_team_record_splits(g["home_id"])
-        away_splits = get_team_record_splits(g["away_id"])
-        home_inj = get_team_injuries(g["home_id"])
-        away_inj = get_team_injuries(g["away_id"])
+    for g in matchups:
+        home, away = g["home_team"], g["away_team"]
+        home_rec = team_record_and_splits(games, season, home, week)
+        away_rec = team_record_and_splits(games, season, away, week)
+        home_yd = team_yardage_and_turnovers(team_week_stats, season, home, week)
+        away_yd = team_yardage_and_turnovers(team_week_stats, season, away, week)
+
+        home_full = TEAM_FULL_NAMES.get(home, home)
+        away_full = TEAM_FULL_NAMES.get(away, away)
 
         odds_key_guess = None
         for key in odds_lookup:
-            if g["home_team"] in key and g["away_team"] in key:
+            if home_full in key and away_full in key:
                 odds_key_guess = key
                 break
         odds_entry = odds_lookup.get(odds_key_guess, {"current": {}, "opening": {}})
 
-        lines.append(f"\n{g['away_team']} ({g['away_record']}) @ {g['home_team']} ({g['home_record']})")
-        lines.append(f"  {g['date']}  |  {g['venue']}  |  {g['status']}")
+        lines.append(f"\n{away_full} ({away_rec['record']}) @ {home_full} ({home_rec['record']})")
+        lines.append(f"  {g.get('gameday', '')}  {g.get('gametime', '')}  |  {g.get('stadium', '')}")
         lines.append(
-            f"  {g['away_abbr']} — {away_stats['pts_for']} pts/gm, {away_stats['yards_per_game']} yds/gm, "
-            f"TO margin {away_stats['turnover_margin']}  |  Home/Away: {away_splits['home']}/{away_splits['away']}"
+            f"  {away} — {away_rec['pts_for']} pts/gm scored, {away_rec['pts_against']} allowed, "
+            f"{away_yd['yards_per_game']} yds/gm, TO margin {away_yd['turnover_margin']}  "
+            f"|  Home/Away: {away_rec['home_record']}/{away_rec['away_record']}"
         )
         lines.append(
-            f"  {g['home_abbr']} — {home_stats['pts_for']} pts/gm, {home_stats['yards_per_game']} yds/gm, "
-            f"TO margin {home_stats['turnover_margin']}  |  Home/Away: {home_splits['home']}/{home_splits['away']}"
+            f"  {home} — {home_rec['pts_for']} pts/gm scored, {home_rec['pts_against']} allowed, "
+            f"{home_yd['yards_per_game']} yds/gm, TO margin {home_yd['turnover_margin']}  "
+            f"|  Home/Away: {home_rec['home_record']}/{home_rec['away_record']}"
         )
         lines.append(f"  Moneyline (current): {format_outcomes(odds_entry['current'].get('moneyline'))}")
         lines.append(f"  Moneyline (opening): {format_outcomes(odds_entry['opening'].get('moneyline'))}")
@@ -357,10 +377,8 @@ def build_report():
         lines.append(f"  Spread (opening):    {format_outcomes(odds_entry['opening'].get('spread'))}")
         lines.append(f"  Total (current):     {format_outcomes(odds_entry['current'].get('total'))}")
         lines.append(f"  Total (opening):     {format_outcomes(odds_entry['opening'].get('total'))}")
-        if away_inj:
-            lines.append(f"  {g['away_abbr']} injuries: {', '.join(away_inj)}")
-        if home_inj:
-            lines.append(f"  {g['home_abbr']} injuries: {', '.join(home_inj)}")
+        if g.get("spread_line"):
+            lines.append(f"  (nflverse closing-line reference — spread {g.get('spread_line')}, total {g.get('total_line')})")
 
     return "\n".join(lines), week_label
 
@@ -406,8 +424,8 @@ def send_ntfy_ping(message):
 
 def main():
     report, week_label = build_report()
-    print(report)  # also lands in the GitHub Actions log for debugging
-    subject = f"NFL Report — {week_label or datetime.now().strftime('%Y-%m-%d')}"
+    print(report)
+    subject = f"NFL Report — {week_label}"
     send_email(subject, report)
     send_ntfy_ping(f"{subject} is in your inbox.")
 
