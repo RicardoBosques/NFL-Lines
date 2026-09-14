@@ -1,0 +1,51 @@
+name: NFL Weekly Report
+
+on:
+  schedule:
+    # NFL is weekly, not daily, so this fires twice around the slate instead
+    # of once a day like the MLB version:
+    #   - Wednesday 15:00 UTC (~10am CDT / 9am CST) — injury reports are
+    #     just starting to firm up and lines have opened for the week
+    #   - Sunday 14:00 UTC (~9am CDT / 8am CST) — a last look before the
+    #     early Sunday slate kicks off
+    # Cron is always UTC and does NOT auto-adjust for daylight saving —
+    # shift both by 1 hour (14/13) once CST starts, same caveat as MLB.
+    - cron: '0 15 * * 3'
+    - cron: '0 14 * * 0'
+  workflow_dispatch: {}  # lets you trigger a run manually from the Actions tab
+
+permissions:
+  contents: write  # required so the workflow can commit opening_odds.json back
+
+jobs:
+  run-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run NFL report script
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python nfl_report.py
+
+      - name: Commit updated opening odds
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add opening_odds.json
+          if git diff --staged --quiet; then
+            echo "No changes to opening_odds.json"
+          else
+            git pull --rebase
+            git commit -m "Update opening odds [skip ci]"
+            git push
+          fi
