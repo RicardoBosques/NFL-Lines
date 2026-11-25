@@ -683,6 +683,42 @@
       }
     ]
   },
+  "Buffalo Bills@New England Patriots_2026-12-06": {
+    "moneyline": [
+      {
+        "name": "Buffalo Bills",
+        "price": -780
+      },
+      {
+        "name": "New England Patriots",
+        "price": 549
+      }
+    ],
+    "spread": [
+      {
+        "name": "Buffalo Bills",
+        "point": -12.5,
+        "price": -109
+      },
+      {
+        "name": "New England Patriots",
+        "point": 12.5,
+        "price": -110
+      }
+    ],
+    "total": [
+      {
+        "name": "Over",
+        "point": 44.5,
+        "price": -110
+      },
+      {
+        "name": "Under",
+        "point": 44.5,
+        "price": -110
+      }
+    ]
+  },
   "Buffalo Bills@New York Jets_2026-11-15": {
     "moneyline": [
       {
@@ -823,6 +859,42 @@
       {
         "name": "Under",
         "point": 47.5,
+        "price": -115
+      }
+    ]
+  },
+  "Carolina Panthers@Minnesota Vikings_2026-12-06": {
+    "moneyline": [
+      {
+        "name": "Carolina Panthers",
+        "price": 209
+      },
+      {
+        "name": "Minnesota Vikings",
+        "price": -254
+      }
+    ],
+    "spread": [
+      {
+        "name": "Carolina Panthers",
+        "point": 5.5,
+        "price": -110
+      },
+      {
+        "name": "Minnesota Vikings",
+        "point": -5.5,
+        "price": -110
+      }
+    ],
+    "total": [
+      {
+        "name": "Over",
+        "point": 43.5,
+        "price": -104
+      },
+      {
+        "name": "Under",
+        "point": 43.5,
         "price": -115
       }
     ]
@@ -1148,6 +1220,42 @@
         "name": "Under",
         "point": 50.5,
         "price": -110
+      }
+    ]
+  },
+  "Cincinnati Bengals@Cleveland Browns_2026-12-06": {
+    "moneyline": [
+      {
+        "name": "Cincinnati Bengals",
+        "price": -256
+      },
+      {
+        "name": "Cleveland Browns",
+        "price": 211
+      }
+    ],
+    "spread": [
+      {
+        "name": "Cincinnati Bengals",
+        "point": -6.0,
+        "price": -110
+      },
+      {
+        "name": "Cleveland Browns",
+        "point": 6.0,
+        "price": -110
+      }
+    ],
+    "total": [
+      {
+        "name": "Over",
+        "point": 46.5,
+        "price": -113
+      },
+      {
+        "name": "Under",
+        "point": 46.5,
+        "price": -106
       }
     ]
   },
@@ -1619,6 +1727,42 @@
       }
     ]
   },
+  "Dallas Cowboys@Seattle Seahawks_2026-12-08": {
+    "moneyline": [
+      {
+        "name": "Dallas Cowboys",
+        "price": 220
+      },
+      {
+        "name": "Seattle Seahawks",
+        "price": -267
+      }
+    ],
+    "spread": [
+      {
+        "name": "Dallas Cowboys",
+        "point": 6.0,
+        "price": -110
+      },
+      {
+        "name": "Seattle Seahawks",
+        "point": -6.0,
+        "price": -110
+      }
+    ],
+    "total": [
+      {
+        "name": "Over",
+        "point": 50.5,
+        "price": -110
+      },
+      {
+        "name": "Under",
+        "point": 50.5,
+        "price": -110
+      }
+    ]
+  },
   "Denver Broncos@Arizona Cardinals_2026-10-25": {
     "moneyline": [
       {
@@ -1871,6 +2015,42 @@
       }
     ]
   },
+  "Detroit Lions@Atlanta Falcons_2026-12-06": {
+    "moneyline": [
+      {
+        "name": "Atlanta Falcons",
+        "price": 160
+      },
+      {
+        "name": "Detroit Lions",
+        "price": -191
+      }
+    ],
+    "spread": [
+      {
+        "name": "Atlanta Falcons",
+        "point": 3.5,
+        "price": -115
+      },
+      {
+        "name": "Detroit Lions",
+        "point": -3.5,
+        "price": -104
+      }
+    ],
+    "total": [
+      {
+        "name": "Over",
+        "point": 49.5,
+        "price": -115
+      },
+      {
+        "name": "Under",
+        "point": 49.5,
+        "price": -104
+      }
+    ]
+  },
   "Detroit Lions@Buffalo Bills_2026-09-18": {
     "moneyline": [
       {
@@ -2083,6 +2263,42 @@
       {
         "name": "Under",
         "point": 47.5,
+        "price": -110
+      }
+    ]
+  },
+  "Green Bay Packers@New Orleans Saints_2026-12-06": {
+    "moneyline": [
+      {
+        "name": "Green Bay Packers",
+        "price": -249
+      },
+      {
+        "name": "New Orleans Saints",
+        "price": 206
+      }
+    ],
+    "spread": [
+      {
+        "name": "Green Bay Packers",
+        "point": -5.5,
+        "price": -113
+      },
+      {
+        "name": "New Orleans Saints",
+        "point": 5.5,
+        "price": -106
+      }
+    ],
+    "total": [
+      {
+        "name": "Over",
+        "point": 46.5,
+        "price": -109
+      },
+      {
+        "name": "Under",
+        "point": 46.5,
         "price": -110
       }
     ]
@@ -2300,6 +2516,42 @@
         "name": "Under",
         "point": 42.5,
         "price": -110
+      }
+    ]
+  },
+  "Houston Texans@Pittsburgh Steelers_2026-12-07": {
+    "moneyline": [
+      {
+        "name": "Houston Texans",
+        "price": -219
+      },
+      {
+        "name": "Pittsburgh Steelers",
+        "price": 182
+      }
+    ],
+    "spread": [
+      {
+        "name": "Houston Texans",
+        "point": -4.5,
+        "price": -108
+      },
+      {
+        "name": "Pittsburgh Steelers",
+        "point": 4.5,
+        "price": -112
+      }
+    ],
+    "total": [
+      {
+        "name": "Over",
+        "point": 41.5,
+        "price": -110
+      },
+      {
+        "name": "Under",
+        "point": 41.5,
+        "price": -109
       }
     ]
   },
@@ -2591,6 +2843,42 @@
       }
     ]
   },
+  "Jacksonville Jaguars@Chicago Bears_2026-12-06": {
+    "moneyline": [
+      {
+        "name": "Chicago Bears",
+        "price": -154
+      },
+      {
+        "name": "Jacksonville Jaguars",
+        "price": 130
+      }
+    ],
+    "spread": [
+      {
+        "name": "Chicago Bears",
+        "point": -3.0,
+        "price": -104
+      },
+      {
+        "name": "Jacksonville Jaguars",
+        "point": 3.0,
+        "price": -115
+      }
+    ],
+    "total": [
+      {
+        "name": "Over",
+        "point": 49.5,
+        "price": -115
+      },
+      {
+        "name": "Under",
+        "point": 49.5,
+        "price": -104
+      }
+    ]
+  },
   "Jacksonville Jaguars@Cincinnati Bengals_2026-10-04": {
     "moneyline": [
       {
@@ -2864,6 +3152,42 @@
         "name": "Las Vegas Raiders",
         "point": 6.0,
         "price": -110
+      }
+    ],
+    "total": [
+      {
+        "name": "Over",
+        "point": 45.5,
+        "price": -110
+      },
+      {
+        "name": "Under",
+        "point": 45.5,
+        "price": -110
+      }
+    ]
+  },
+  "Kansas City Chiefs@Los Angeles Rams_2026-12-04": {
+    "moneyline": [
+      {
+        "name": "Kansas City Chiefs",
+        "price": -108
+      },
+      {
+        "name": "Los Angeles Rams",
+        "price": -110
+      }
+    ],
+    "spread": [
+      {
+        "name": "Kansas City Chiefs",
+        "point": 1.5,
+        "price": -123
+      },
+      {
+        "name": "Los Angeles Rams",
+        "point": -1.5,
+        "price": 102
       }
     ],
     "total": [
@@ -3383,6 +3707,42 @@
       }
     ]
   },
+  "Los Angeles Chargers@Tampa Bay Buccaneers_2026-12-06": {
+    "moneyline": [
+      {
+        "name": "Los Angeles Chargers",
+        "price": 211
+      },
+      {
+        "name": "Tampa Bay Buccaneers",
+        "price": -256
+      }
+    ],
+    "spread": [
+      {
+        "name": "Los Angeles Chargers",
+        "point": 5.5,
+        "price": -110
+      },
+      {
+        "name": "Tampa Bay Buccaneers",
+        "point": -5.5,
+        "price": -110
+      }
+    ],
+    "total": [
+      {
+        "name": "Over",
+        "point": 40.5,
+        "price": -110
+      },
+      {
+        "name": "Under",
+        "point": 40.5,
+        "price": -110
+      }
+    ]
+  },
   "Los Angeles Rams@Arizona Cardinals_2026-11-15": {
     "moneyline": [
       {
@@ -3596,6 +3956,42 @@
         "name": "Under",
         "point": 46.5,
         "price": -110
+      }
+    ]
+  },
+  "Miami Dolphins@Denver Broncos_2026-12-06": {
+    "moneyline": [
+      {
+        "name": "Denver Broncos",
+        "price": -1120
+      },
+      {
+        "name": "Miami Dolphins",
+        "price": 710
+      }
+    ],
+    "spread": [
+      {
+        "name": "Denver Broncos",
+        "point": -14.5,
+        "price": -105
+      },
+      {
+        "name": "Miami Dolphins",
+        "point": 14.5,
+        "price": -114
+      }
+    ],
+    "total": [
+      {
+        "name": "Over",
+        "point": 39.5,
+        "price": -110
+      },
+      {
+        "name": "Under",
+        "point": 39.5,
+        "price": -109
       }
     ]
   },
@@ -4715,6 +5111,42 @@
       }
     ]
   },
+  "Philadelphia Eagles@Arizona Cardinals_2026-12-06": {
+    "moneyline": [
+      {
+        "name": "Arizona Cardinals",
+        "price": 131
+      },
+      {
+        "name": "Philadelphia Eagles",
+        "price": -156
+      }
+    ],
+    "spread": [
+      {
+        "name": "Arizona Cardinals",
+        "point": 3.0,
+        "price": -109
+      },
+      {
+        "name": "Philadelphia Eagles",
+        "point": -3.0,
+        "price": -110
+      }
+    ],
+    "total": [
+      {
+        "name": "Over",
+        "point": 36.5,
+        "price": -115
+      },
+      {
+        "name": "Under",
+        "point": 36.5,
+        "price": -104
+      }
+    ]
+  },
   "Philadelphia Eagles@Chicago Bears_2026-09-29": {
     "moneyline": [
       {
@@ -5179,6 +5611,42 @@
       {
         "name": "Under",
         "point": 53.5,
+        "price": -110
+      }
+    ]
+  },
+  "San Francisco 49ers@New York Giants_2026-12-06": {
+    "moneyline": [
+      {
+        "name": "New York Giants",
+        "price": 240
+      },
+      {
+        "name": "San Francisco 49ers",
+        "price": -294
+      }
+    ],
+    "spread": [
+      {
+        "name": "New York Giants",
+        "point": 6.5,
+        "price": -110
+      },
+      {
+        "name": "San Francisco 49ers",
+        "point": -6.5,
+        "price": -110
+      }
+    ],
+    "total": [
+      {
+        "name": "Over",
+        "point": 47.5,
+        "price": -110
+      },
+      {
+        "name": "Under",
+        "point": 47.5,
         "price": -110
       }
     ]
@@ -5899,6 +6367,42 @@
       {
         "name": "Under",
         "point": 50.5,
+        "price": -110
+      }
+    ]
+  },
+  "Washington Commanders@Tennessee Titans_2026-12-06": {
+    "moneyline": [
+      {
+        "name": "Tennessee Titans",
+        "price": 192
+      },
+      {
+        "name": "Washington Commanders",
+        "price": -231
+      }
+    ],
+    "spread": [
+      {
+        "name": "Tennessee Titans",
+        "point": 4.5,
+        "price": -110
+      },
+      {
+        "name": "Washington Commanders",
+        "point": -4.5,
+        "price": -110
+      }
+    ],
+    "total": [
+      {
+        "name": "Over",
+        "point": 47.5,
+        "price": -110
+      },
+      {
+        "name": "Under",
+        "point": 47.5,
         "price": -110
       }
     ]
